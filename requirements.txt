@@ -1,1 +1,12 @@
 streamlit
+langchain
+langchain-openai
+langgraph
+pydantic
+duckduckgo-search
+beautifulsoup4
+requests
+certifi
+lxml
+html2text
+langchain_google_genai
