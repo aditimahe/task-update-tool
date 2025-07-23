@@ -24,7 +24,7 @@ def process_uploaded_json(uploaded_file):
     Processes the uploaded JSON file to extract task details, convert HTML to Markdown,
     and find all URLs within the content.
     """
-    st.write("➡️ Processing uploaded JSON file...")
+    st.write("Processing uploaded JSON file...")
     try:
         # Instantiate html2text converter
         h = html2text.HTML2Text()
@@ -50,7 +50,7 @@ def process_uploaded_json(uploaded_file):
 
         # Combine into a single markdown document
         full_task_md = f"# Name\n{name_md}\n\n## Description\n{description_md}\n\n## Instructions\n{instructions_md}"
-        st.write("✅ Successfully converted HTML to Markdown.")
+        st.write("Successfully converted HTML to Markdown.")
 
         # Extract all URLs from the final markdown text
         # Regex for markdown links and plain URLs
@@ -60,7 +60,7 @@ def process_uploaded_json(uploaded_file):
 
         # Filter out non-scrapeable files like PDFs
         filtered_urls = [url for url in unique_urls if not url.lower().endswith(('.pdf', '.zip', '.jpg'))]
-        st.write(f"✅ Found {len(filtered_urls)} relevant URLs to analyze.")
+        st.write(f"Found {len(filtered_urls)} relevant URLs to analyze.")
 
         return full_task_md, filtered_urls
 
@@ -94,7 +94,7 @@ def scrape_urls(state: GraphState) -> GraphState:
         st.warning("No URLs found to scrape.")
         return {**state, "documents": {}}
 
-    st.write(f"➡️ Scraping content from {len(urls_to_scrape)} URL(s)...")
+    st.write(f"Scraping content from {len(urls_to_scrape)} URL(s)...")
     documents = {}
     progress_bar = st.progress(0, text="Scraping progress...")
 
@@ -110,9 +110,9 @@ def scrape_urls(state: GraphState) -> GraphState:
                 
                 if text:
                     documents[url] = text
-                    st.write(f"✅ Successfully scraped {url}")
+                    st.write(f"Successfully scraped {url}")
                 else:
-                    st.write(f"⚠️ No paragraph text found at {url}")
+                    st.write(f"No paragraph text found at {url}")
 
         except requests.RequestException as e:
             st.error(f"Error scraping {url}: {e}")
@@ -132,7 +132,7 @@ def propose_update(state: GraphState, llm) -> GraphState:
         st.warning("No documents were scraped. Skipping update proposal.")
         return {**state, "proposed_update": {}}
 
-    st.write("➡️ Generating update proposals using the LLM...")
+    st.write("Generating update proposals using the LLM...")
     
     prompt_template = ChatPromptTemplate.from_template(
         """
@@ -200,7 +200,7 @@ def propose_update(state: GraphState, llm) -> GraphState:
                     "url": url
                 })
                 updates[url] = result
-                st.write(f"✅ Analysis complete for {url}")
+                st.write(f"Analysis complete for {url}")
 
             except Exception as e:
                 st.error(f"Error analyzing content from {url}: {e}")
@@ -214,30 +214,28 @@ def propose_update(state: GraphState, llm) -> GraphState:
 
 st.set_page_config(page_title="Task Update Assistant", layout="wide")
 st.title("Task Update Tool")
-st.markdown("This app analyzes instructions from a JSON file, scrapes content from URLs within it, and suggests updates using an LLM.")
+st.markdown("This tool analyzes tasks from a JSON file, scrapes content from URLs linked within it, and suggests updates using an LLM")
 
 # --- Sidebar for Configuration ---
 with st.sidebar:
     st.header("Configuration")
     
-    provider = st.selectbox("Select LLM Provider", ["Google", "OpenAI"])
+    provider = st.selectbox("Select LLM Provider", ["Google"])
 
     api_key = None
     if provider == "Google":
         api_key = st.text_input("Google API Key", type="password")
-        st.markdown("Get your key from [Google AI Studio](https://aistudio.google.com/app/apikey).")
-    else: # OpenAI
-        api_key = st.text_input("OpenAI API Key", type="password")
-        st.markdown("Get your key from [OpenAI](https://platform.openai.com/account/api-keys).")
-
+        st.markdown("Get key from [Google AI Studio](https://aistudio.google.com/app/apikey).")
+    else: 
+        None
     uploaded_file = st.file_uploader(
-        "Upload Task JSON File",
+        "Upload Task File in JSON format",
         type=['json'],
         help="The JSON should have a `data` key containing a list with one object, which has `name`, `description`, and `instructions` fields (can be HTML)."
     )
 
 # --- Main Page Logic ---
-if st.button("Analyze and Propose Updates", disabled=(not uploaded_file or not api_key)):
+if st.button("Propose Updates", disabled=(not uploaded_file or not api_key)):
     
     full_task_md, task_urls = process_uploaded_json(uploaded_file)
     
@@ -293,7 +291,7 @@ if st.button("Analyze and Propose Updates", disabled=(not uploaded_file or not a
                             improvements = update_data.get('general_improvements', [])
 
                             if not discrepancies and not improvements:
-                                st.success("✅ No discrepancies found. The instructions appear to be up-to-date based on this source.")
+                                st.success("No discrepancies found. The instructions appear to be up-to-date based on this source.")
                                 continue
 
                             if discrepancies:
@@ -325,4 +323,4 @@ if st.button("Analyze and Propose Updates", disabled=(not uploaded_file or not a
                 st.exception(e)
 
 elif not (uploaded_file and api_key):
-    st.warning("Please provide your API Key and upload a task JSON file to begin.")
+    st.warning("Please obtain and provide API Key and upload a task JSON file")
