@@ -179,52 +179,52 @@ def scrape_urls(state):
 
     return {**state, "urls": all_urls, "indirect_documents": indirect_documents, "relevant_documents": documents_relevant}
 
-prompt = ChatPromptTemplate.from_template(
-    """
-    You are tasked with analyzing the website content to determine whether the provided instructions need to be updated.
+# prompt = ChatPromptTemplate.from_template(
+#     """
+#     You are tasked with analyzing the website content to determine whether the provided instructions need to be updated.
 
-    Your goal is to:
-    1. Identify any discrepancies or outdated information in the instructions based on the website content.
-    2. Assess the severity of each discrepancy — classify it as either minor or major.
-    3. Suggest specific, actionable updates to the instructions, focusing only on the content that requires revision.
-    4. Clearly explain the reasoning behind each suggested change.
-    5. If applicable, propose general improvements to enhance the clarity, completeness, or level of detail in the instructions.
+#     Your goal is to:
+#     1. Identify any discrepancies or outdated information in the instructions based on the website content.
+#     2. Assess the severity of each discrepancy — classify it as either minor or major.
+#     3. Suggest specific, actionable updates to the instructions, focusing only on the content that requires revision.
+#     4. Clearly explain the reasoning behind each suggested change.
+#     5. If applicable, propose general improvements to enhance the clarity, completeness, or level of detail in the instructions.
 
-    Only evaluate and suggest updates related to the content of the instructions — do not rewrite or reformat unrelated parts found in the website content.
+#     Only evaluate and suggest updates related to the content of the instructions — do not rewrite or reformat unrelated parts found in the website content.
 
-    **Important: Your response must be valid JSON matching this schema:**
+#     **Important: Your response must be valid JSON matching this schema:**
 
-    {{
-      "discrepancies": [
-        {{
-          "description_reasoning": "string",
-          "severity": "minor|major",
-          "suggested_update": {{
-            "original_text": "string or null",
-            "revised_text": "string or null",
-          }}
-        }}
-      ],
-      "general_improvements": [
-        {{
-          "description_reasoning": "string",
-          "suggested_update": {{
-            "original_text": "string or null",
-            "revised_text": "string or null",
-          }}
-        }}
-      ]
-    }}
+#     {{
+#       "discrepancies": [
+#         {{
+#           "description_reasoning": "string",
+#           "severity": "minor|major",
+#           "suggested_update": {{
+#             "original_text": "string or null",
+#             "revised_text": "string or null",
+#           }}
+#         }}
+#       ],
+#       "general_improvements": [
+#         {{
+#           "description_reasoning": "string",
+#           "suggested_update": {{
+#             "original_text": "string or null",
+#             "revised_text": "string or null",
+#           }}
+#         }}
+#       ]
+#     }}
 
-    Original Task:
-    {task}
+#     Original Task:
+#     {task}
 
-    Context from current sources:
-    {context}
+#     Context from current sources:
+#     {context}
 
-    Your response in valid json:
-    """
-)
+#     Your response in valid json:
+#     """
+# )
 
 class SuggestedUpdate(BaseModel):
     original_text: Optional[str] = Field(None, description="The original instruction text to update")
@@ -247,8 +247,11 @@ def propose_update(state):
     print("---PROPOSING UPDATES BASED ON SCRAPED CONTENT---")
     task = state["task"]
     llm = state["llm"] # Get llm from state
-    update_chain = prompt | llm | StrOutputParser()
     updates = {}
+
+    user_prompt_template = state["update_prompt"]
+    prompt = ChatPromptTemplate.from_template(user_prompt_template)
+    update_chain = prompt | llm | StrOutputParser()
 
     print("Relevant documents for analysis:", list(state["relevant_documents"].keys()))
 
@@ -682,6 +685,7 @@ class GraphState(TypedDict):
     llm: ChatGoogleGenerativeAI
     task: str # Task in markdown format
     run_settings: dict # Settings for the run, which features to run
+    update_prompt: str # The user-editable prompt for proposing updates
     search_terms: List[str]
     task_urls: List[str]  # URLs embedded in the task
     search_urls: List[str]  # URLs retrieved from DuckDuckGo
