@@ -10,3 +10,4 @@ certifi
 lxml
 html2text
 langchain_google_genai
+datetime
