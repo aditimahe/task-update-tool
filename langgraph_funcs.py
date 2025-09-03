@@ -144,7 +144,10 @@ def extract_task_urls(state):
 
 def scrape_urls_func(all_urls, type_to_save):
     documents = {}
-
+    # Define headers once outside the loop
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
     for url in all_urls:
         if url.lower().endswith(".pdf"):
             print(f"Skipping PDF URL: {url}")
@@ -152,7 +155,9 @@ def scrape_urls_func(all_urls, type_to_save):
 
         print('\n→ Scraping URL:', url)
         try:
-            response = requests.get(url, verify=certifi.where(), timeout=10)
+            # Add headers to the request
+            response = requests.get(url, verify=certifi.where(), timeout=15, headers=headers)
+            response.raise_for_status() # Good practice to check for HTTP errors
             soup = BeautifulSoup(response.text, "html.parser")
             text = " ".join([p.get_text() for p in soup.find_all("p")])
             documents[url] = {
@@ -164,6 +169,29 @@ def scrape_urls_func(all_urls, type_to_save):
             continue
 
     return documents
+
+# def scrape_urls_func(all_urls, type_to_save):
+#     documents = {}
+
+#     for url in all_urls:
+#         if url.lower().endswith(".pdf"):
+#             print(f"Skipping PDF URL: {url}")
+#             continue
+
+#         print('\n→ Scraping URL:', url)
+#         try:
+#             response = requests.get(url, verify=certifi.where(), timeout=10)
+#             soup = BeautifulSoup(response.text, "html.parser")
+#             text = " ".join([p.get_text() for p in soup.find_all("p")])
+#             documents[url] = {
+#                 "type": type_to_save,
+#                 "text": text,
+#             }
+#         except Exception as e:
+#             print(f"Error scraping {url}: {e}")
+#             continue
+
+#     return documents
 
 def scrape_urls(state):
     print("---SCRAPING URLS---")
@@ -365,17 +393,21 @@ def get_latest_wayback_snapshot(url, before_date=None):
     """
     print(f"Searching archive for latest snapshot of: {url}")
     api_url = "http://web.archive.org/cdx/search/cdx"
-    # Get a full list to process manually for reliability.
     params = {'url': url, 'output': 'json', 'filter': 'statuscode:200'}
 
+    # Define a standard browser User-Agent header
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
     if before_date:
-        # Format the date into the timestamp string required by the API (YYYYMMDDHHMMSS)
         timestamp = before_date.strftime('%Y%m%d%H%M%S')
         params['to'] = timestamp
         print(f"Searching for snapshots before: {before_date.strftime('%Y-%m-%d')}")
 
     try:
-        response = requests.get(api_url, params=params)
+        # Add the headers to your request
+        response = requests.get(api_url, params=params, headers=headers, timeout=20)
         response.raise_for_status()
         data = response.json()
         # Check for empty or header-only response
