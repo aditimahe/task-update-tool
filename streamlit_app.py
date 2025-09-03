@@ -34,7 +34,15 @@ with st.sidebar:
     st.header("⚙️ Analysis Settings")
     direct_sources_enabled = st.toggle("Analyze URLs from Task Content", value=True, help="Extract and scrape URLs found directly within the task's name, description, and instructions.")
     indirect_sources_enabled = st.toggle("Search Web for External Sources", value=True, help="Generate search terms based on the task and find additional, potentially more up-to-date sources online.")
-    wayback_enabled = st.toggle("Compare with Wayback Machine", value=True, help="Check each direct URL against its archive.org snapshot to detect changes.")
+    wayback_enabled = st.toggle("Compare with Wayback Machine", value=True, help="Check each direct URL against its archive.org snapshot to detect changes.")    
+    # Add the date input, disabled if the main toggle is off
+    wayback_comparison_date = st.date_input(
+        "Compare with snapshot before this date",
+        value=datetime.now(),
+        help="The analysis will find the latest snapshot available *before* this date.",
+        disabled=not wayback_enabled
+    )
+
     wayback_save_enabled = st.toggle("Save New Snapshot if Changes Found", value=False, help="If a difference is detected, save a new snapshot to archive.org.", disabled=not wayback_enabled)
 
 # --- File Uploaders ---
@@ -56,6 +64,7 @@ Your goal is to:
 5. If applicable, propose general improvements to enhance the clarity, completeness, or level of detail in the instructions.
 
 Only evaluate and suggest updates related to the content of the instructions — do not rewrite or reformat unrelated parts found in the website content.
+Assume any reference to an attached form is already fulfilled.
 
 **Important: Your response must be valid JSON matching this schema:**
 
@@ -121,7 +130,8 @@ if st.button("🚀 Run Analysis", disabled=(not main_data_file or not content_da
         "indirect_sources": indirect_sources_enabled,
         "wayback_machine_snapshots": wayback_enabled,
         "wayback_machine_snapshots_save": wayback_save_enabled,
-        "additional_sources": additional_sources
+        "additional_sources": additional_sources,
+        "wayback_comparison_date": datetime.combine(wayback_comparison_date, datetime.min.time()) # Combine date with time
     }
     
     # --- Capture Logs ---
@@ -248,6 +258,7 @@ if st.button("🚀 Run Analysis", disabled=(not main_data_file or not content_da
         else:
             for url, data in wayback_results.items():
                 with st.expander(f"**Analysis for: `{url}`**", expanded=True):
+                    st.markdown(f"🔗 **Live Website:** [{url}]({url})")
 
                     # Use columns for a clean date layout
                     col1, col2 = st.columns(2)
@@ -264,10 +275,10 @@ if st.button("🚀 Run Analysis", disabled=(not main_data_file or not content_da
                     snapshot_url = data.get("snapshot_url")
 
                     if today_url:
-                        st.markdown(f"🔗 **Live Website:** [{today_url}]({today_url})")
+                        st.markdown(f"🔗 [**Live Website**]({today_url})")
                     
                     if snapshot_url:
-                        st.markdown(f"🗄️ **Archived Snapshot:** [{snapshot_url}]({snapshot_url})")
+                        st.markdown(f"🗄️ [**Archived Snapshot**]({snapshot_url})")
 
                     st.markdown("---") # Visual separator
 

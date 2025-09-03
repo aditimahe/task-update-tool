@@ -179,53 +179,6 @@ def scrape_urls(state):
 
     return {**state, "urls": all_urls, "indirect_documents": indirect_documents, "relevant_documents": documents_relevant}
 
-# prompt = ChatPromptTemplate.from_template(
-#     """
-#     You are tasked with analyzing the website content to determine whether the provided instructions need to be updated.
-
-#     Your goal is to:
-#     1. Identify any discrepancies or outdated information in the instructions based on the website content.
-#     2. Assess the severity of each discrepancy — classify it as either minor or major.
-#     3. Suggest specific, actionable updates to the instructions, focusing only on the content that requires revision.
-#     4. Clearly explain the reasoning behind each suggested change.
-#     5. If applicable, propose general improvements to enhance the clarity, completeness, or level of detail in the instructions.
-
-#     Only evaluate and suggest updates related to the content of the instructions — do not rewrite or reformat unrelated parts found in the website content.
-
-#     **Important: Your response must be valid JSON matching this schema:**
-
-#     {{
-#       "discrepancies": [
-#         {{
-#           "description_reasoning": "string",
-#           "severity": "minor|major",
-#           "suggested_update": {{
-#             "original_text": "string or null",
-#             "revised_text": "string or null",
-#           }}
-#         }}
-#       ],
-#       "general_improvements": [
-#         {{
-#           "description_reasoning": "string",
-#           "suggested_update": {{
-#             "original_text": "string or null",
-#             "revised_text": "string or null",
-#           }}
-#         }}
-#       ]
-#     }}
-
-#     Original Task:
-#     {task}
-
-#     Context from current sources:
-#     {context}
-
-#     Your response in valid json:
-#     """
-# )
-
 class SuggestedUpdate(BaseModel):
     original_text: Optional[str] = Field(None, description="The original instruction text to update")
     revised_text: Optional[str] = Field(None, description="The suggested revision")
@@ -403,37 +356,46 @@ def get_canonical_url(url):
         print(f"Could not resolve canonical URL for {url}: {e}")
         return url
     
-def get_latest_wayback_snapshot(url):
+
+def get_latest_wayback_snapshot(url, before_date=None):
     """
-    Fetches the URL and date for the most recent snapshot of a given CANONICAL URL.
+    Fetches the URL and date for the most recent snapshot of a given CANONICAL URL,
+    optionally before a specified date.
     Returns a dictionary containing the URL and a datetime object, or None if not found.
     """
     print(f"Searching archive for latest snapshot of: {url}")
     api_url = "http://web.archive.org/cdx/search/cdx"
-    params = {'url': url, 'output': 'json', 'limit': -1, 'filter': 'statuscode:200', 'collapse': 'digest'}
+    # Get a full list to process manually for reliability.
+    params = {'url': url, 'output': 'json', 'filter': 'statuscode:200'}
+
+    if before_date:
+        # Format the date into the timestamp string required by the API (YYYYMMDDHHMMSS)
+        timestamp = before_date.strftime('%Y%m%d%H%M%S')
+        params['to'] = timestamp
+        print(f"Searching for snapshots before: {before_date.strftime('%Y-%m-%d')}")
+
     try:
         response = requests.get(api_url, params=params)
         response.raise_for_status()
         data = response.json()
+        # Check for empty or header-only response
         if not data or len(data) < 2:
-            print("No snapshots found for this URL.")
+            print("No snapshots found for this URL matching the criteria.")
             return None
-        
-        # The first item in the list is headers, the rest are snapshots.
-        # We take the first snapshot entry which is data[1].
+
+        # The first item is headers. The rest are snapshots sorted chronologically.
+        # We take the LAST snapshot from the list to get the latest one.
         headers = data[0]
-        snapshot_info_list = data[1]
-        snapshot_info = dict(zip(headers, snapshot_info_list))
-        
+        latest_snapshot_list = data[-1]
+        snapshot_info = dict(zip(headers, latest_snapshot_list))
+
         timestamp = snapshot_info.get('timestamp')
         original_url = snapshot_info.get('original')
-        
+
         if timestamp and original_url:
-            # Parse the timestamp string (e.g., '20230815123045') into a datetime object
+            # Parse the timestamp string into a datetime object
             snapshot_datetime = datetime.strptime(timestamp, '%Y%m%d%H%M%S')
             snapshot_url = f"https://web.archive.org/web/{timestamp}/{original_url}"
-            
-            # Return a dictionary with both the URL and the parsed date
             return {
                 "url": snapshot_url,
                 "date": snapshot_datetime
@@ -445,22 +407,6 @@ def get_latest_wayback_snapshot(url):
         print(f"An error occurred during API request: {e}")
         return None
 
-# def fetch_and_clean_html(url, source_name):
-#     """
-#     Fetches a URL and returns its cleaned, visible text content.
-#     """
-#     headers = {'User-Agent': 'Mozilla/5.0'}
-#     try:
-#         print(f"Fetching content from {source_name} ({url})...")
-#         response = requests.get(url, headers=headers, timeout=20)
-#         response.raise_for_status()
-#         soup = BeautifulSoup(response.content, 'lxml')
-#         for script_or_style in soup(["script", "style"]):
-#             script_or_style.decompose()
-#         return ' '.join(t.strip() for t in soup.stripped_strings)
-#     except requests.exceptions.RequestException as e:
-#         print(f"Error fetching {source_name} URL: {e}")
-#         return None
 
 def fetch_and_clean_html(url, source_name):
     """
@@ -544,9 +490,9 @@ def summarize_changes_with_llm(llm, snapshot_text, live_text):
     except Exception as e:
         return f"An error occurred while communicating with the LLM: {e}"
 
-def compare_live_with_snapshot(initial_url, llm):
+def compare_live_with_snapshot(initial_url, llm, comparison_date=None):
     """
-    Compares the current live version of a URL with its latest snapshot.
+    Compares the current live version of a URL with its latest snapshot before a given date.
     Returns a dictionary containing the comparison dates, a summary of differences,
     and a boolean indicating if changes were found.
     """
@@ -557,7 +503,7 @@ def compare_live_with_snapshot(initial_url, llm):
     today_date_str = today_date.strftime('%Y-%m-%d')
 
     canonical_url = get_canonical_url(initial_url)
-    snapshot_data = get_latest_wayback_snapshot(canonical_url)
+    snapshot_data = get_latest_wayback_snapshot(canonical_url, before_date=comparison_date)
 
     if not snapshot_data:
         print("Could not find a snapshot to compare against. Exiting.")
@@ -616,6 +562,78 @@ def compare_live_with_snapshot(initial_url, llm):
             "has_changed": True
         }
 
+# def compare_live_with_snapshot(initial_url, llm):
+#     """
+#     Compares the current live version of a URL with its latest snapshot.
+#     Returns a dictionary containing the comparison dates, a summary of differences,
+#     and a boolean indicating if changes were found.
+#     """
+#     print(f"\n--- Starting comparison for: {initial_url} ---")
+
+#     today_date = datetime.now()
+#     # Format dates as strings for the final dictionary
+#     today_date_str = today_date.strftime('%Y-%m-%d')
+
+#     canonical_url = get_canonical_url(initial_url)
+#     snapshot_data = get_latest_wayback_snapshot(canonical_url)
+
+#     if not snapshot_data:
+#         print("Could not find a snapshot to compare against. Exiting.")
+#         return {
+#             "today_date": today_date_str,
+#             "snapshot_date": None,
+#             "summary": "No snapshot available for comparison.",
+#             "has_changed": False
+#         }
+
+#     snapshot_url = snapshot_data["url"]
+#     snapshot_date = snapshot_data["date"]
+#     snapshot_date_str = snapshot_date.strftime('%Y-%m-%d') # Format for dictionary
+
+#     print(f"Comparing dates:")
+#     print(f"  - Live Website Date: {today_date.strftime('%d %B %Y')}")
+#     print(f"  - Last Snapshot Date: {snapshot_date.strftime('%d %B %Y')}")
+#     print(f"Latest snapshot URL found: {snapshot_url}")
+
+#     raw_snapshot_url = snapshot_url.replace('/web/', '/web/', 1).replace('/http', 'id_/http', 1)
+#     live_text = fetch_and_clean_html(canonical_url, "Live Website")
+#     snapshot_text = fetch_and_clean_html(raw_snapshot_url, "Snapshot")
+
+#     if live_text is None or snapshot_text is None:
+#         print("Could not fetch content from one or both sources. Cannot compare.")
+#         return {
+#             "today_date": today_date_str,
+#             "today_url": canonical_url,
+#             "snapshot_date": snapshot_date_str,
+#             "snapshot_url": snapshot_url,
+#             "summary": "Could not fetch content from one or both sources.",
+#             "has_changed": False
+#         }
+
+#     if live_text == snapshot_text:
+#         print("\n✅ RESULT: No difference found between the live site and the latest snapshot.")
+#         return {
+#             "today_date": today_date_str,
+#             "today_url": canonical_url,
+#             "snapshot_date": snapshot_date_str,
+#             "snapshot_url": snapshot_url,
+#             "summary": "No difference found.", # A clear summary for no changes
+#             "has_changed": False
+#         }
+#     else:
+#         print("\n⚠️ RESULT: A difference was detected!")
+#         summary = summarize_changes_with_llm(llm, snapshot_text, live_text)
+#         print("\n--- LLM Summary of Differences ---")
+#         print(summary)
+#         return {
+#             "today_date": today_date_str,
+#             "today_url": canonical_url,
+#             "snapshot_date": snapshot_date_str,
+#             "snapshot_url": snapshot_url,
+#             "summary": summary,
+#             "has_changed": True
+#         }
+
 def save_snapshot(url):
     """
     Requests a snapshot of a URL to be saved in the Wayback Machine.
@@ -663,20 +681,24 @@ def wayback_machine_snapshots(state):
     wayback_machine_results = {}
     llm = state["llm"]
     task_urls = state.get("task_urls", [])
-    
+    run_settings = state.get('run_settings', {})
+
     # Check if this step is enabled in settings
-    if 'run_settings' in state and state['run_settings'].get('wayback_machine_snapshots'):
+    if run_settings.get('wayback_machine_snapshots'):
+        # Get the comparison date from settings, which might be None
+        comparison_date = run_settings.get('wayback_comparison_date')
+
         for url_to_check in task_urls:
             st.write(f'Analysis on {url_to_check}')
             # The function now returns a single dictionary with all info
-            comparison_result = compare_live_with_snapshot(url_to_check, llm)
+            comparison_result = compare_live_with_snapshot(url_to_check, llm, comparison_date=comparison_date)
             st.json(comparison_result)
-            
+
             # Store the entire result dictionary for the URL
             wayback_machine_results[url_to_check] = comparison_result
-            
+
             # Check the 'has_changed' flag inside the result dictionary
-            if comparison_result['has_changed'] and state['run_settings'].get('wayback_machine_snapshots_save'):
+            if comparison_result['has_changed'] and run_settings.get('wayback_machine_snapshots_save'):
                 save_snapshot(url_to_check)
 
     return {**state, "wayback_machine_results": wayback_machine_results}
