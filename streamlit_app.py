@@ -203,6 +203,7 @@ if st.button("🚀 Run Analysis", disabled=(not main_data_file or not content_da
             
             for url, update_data in proposed_update.items():
                 with st.expander(f"**Suggestions for: `{url}`**", expanded=True):
+                    st.markdown(f"🔗 [**Live Website**]({url})")
 
                     update_content = update_data.get("update", {})
                     discrepancies = update_content.get("discrepancies", [])
