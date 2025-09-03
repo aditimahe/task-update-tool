@@ -733,6 +733,8 @@ def wayback_machine_snapshots(state):
             if comparison_result['has_changed'] and run_settings.get('wayback_machine_snapshots_save'):
                 save_snapshot(url_to_check)
 
+            time.sleep(5)
+
     return {**state, "wayback_machine_results": wayback_machine_results}
 
 class GraphState(TypedDict):
